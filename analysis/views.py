@@ -9,15 +9,40 @@ from .analysis_utils import analyze_conversation  # Updated Part 2 version
 # --- Upload a conversation ---
 @api_view(['POST'])
 def upload_conversation(request):
-    """Upload chat JSON"""
-    data = request.data.get('messages', [])
-    if not data:
+    """Upload chat data — handles JSON dicts, lists, or text."""
+    import json
+
+    data = request.data
+
+    # Case 1: Direct JSON array
+    if isinstance(data, list):
+        messages = data
+    # Case 2: Dictionary with messages key
+    elif isinstance(data, dict) and 'messages' in data:
+        messages = data['messages']
+    # Case 3: Raw text string
+    elif isinstance(data, str):
+        try:
+            messages = json.loads(data)
+        except Exception:
+            return Response({'error': 'Invalid JSON text input'}, status=400)
+    else:
+        return Response({'error': 'Invalid input format'}, status=400)
+
+    if not messages:
         return Response({'error': 'No chat messages found'}, status=400)
 
+    # Save conversation
     conv = Conversation.objects.create(title="Chat Upload")
-    for msg in data:
-        Message.objects.create(conversation=conv, sender=msg['sender'], text=msg['message'])
+
+    for msg in messages:
+        if isinstance(msg, dict) and 'sender' in msg and 'message' in msg:
+            Message.objects.create(conversation=conv, sender=msg['sender'], text=msg['message'])
+        else:
+            return Response({'error': 'Each message must have sender and message'}, status=400)
+
     return Response({'conversation_id': conv.id}, status=201)
+
 
 
 # --- Analyse a single conversation by ID ---
@@ -85,5 +110,3 @@ def analyse_conversation_endpoint(request):
         "status": "success",
         "processed_conversations": processed_count
     })
-def frontend_view(request):
-    return render(request, "analysis/index.html")
